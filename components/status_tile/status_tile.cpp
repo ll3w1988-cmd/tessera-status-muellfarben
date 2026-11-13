@@ -63,8 +63,9 @@ static const Kind KINDS[] = {
     {"appliance", 0xF072A, 0xF072A, "running", "idle", Color::BLUE, Color::GREY},       // washing-machine
     {"alarm", 0xF099D, 0xF099E, "armed", "disarmed", Color::GREEN, Color::GREY},        // shield-lock / shield-off
     {"switch", 0xF0521, 0xF1A26, "on", "off", Color::ACCENT, Color::GREY},              // toggle-switch / -variant-off
-    {"temperature", 0xF050F, 0xF050F, "on", "off", Color::GREY, Color::GREY},         // thermometer
-    {"humidity", 0xF058E, 0xF058E, "on", "off", Color::GREY, Color::GREY},            // water-percent
+    {"temperature", 0xF050F, 0xF050F, "on", "off", Color::GREY, Color::GREY},           // thermometer
+    {"humidity", 0xF058E, 0xF058E, "on", "off", Color::GREY, Color::GREY},              // water-percent
+    {"trash", 0xF0A79, 0xF0A79, "on", "off", Color::RED, Color::GREY},                  // trash-can-outline
 };
 
 static const Kind *kind_by_id(const char *id) {
@@ -242,6 +243,8 @@ class StatusTile : public tessera::Tile {
     JsonObjectConst a = data["attributes"];
     snprintf(device_class_, sizeof device_class_, "%s", a["device_class"] | "");
     snprintf(unit_, sizeof unit_, "%s", a["unit_of_measurement"] | "");
+    snprintf(custom_text_, sizeof custom_text_, "%s", a["volltext"] | "");
+    snprintf(custom_color_, sizeof custom_color_, "%s", a["farbe"] | "");
     wrong_ = strcmp(data["wait"] | "", "wrong_entity") == 0;
     paint_now();
   }
@@ -260,7 +263,12 @@ class StatusTile : public tessera::Tile {
       ui::set_color(name_, theme::MUTED);
     }
     const std::string s = state_text_;
-    const Kind *k = strcmp(kind_id_, "auto") == 0 ? guess_kind(device_class_, entity_) : kind_by_id(kind_id_);
+    const Kind *k = nullptr;
+    if (strcmp(kind_id_, "auto") == 0 && (custom_text_[0] || custom_color_[0])) {
+      k = kind_by_id("trash");
+    } else {
+      k = strcmp(kind_id_, "auto") == 0 ? guess_kind(device_class_, entity_) : kind_by_id(kind_id_);
+    }
     if (!k) k = kind_by_id("switch");
 
     if (!have_state_ || wrong_ || s == "unavailable" || s == "unknown" || s.empty()) {
@@ -277,8 +285,12 @@ class StatusTile : public tessera::Tile {
 
     const bool word = is_state_word(s);
     const bool on = is_on(s);
-    const Color color = on ? (on_color_ == Color::AUTO ? k->on : on_color_)
-                           : (off_color_ == Color::AUTO ? k->off : off_color_);
+    Color color = on ? (on_color_ == Color::AUTO ? k->on : on_color_)
+                     : (off_color_ == Color::AUTO ? k->off : off_color_);
+    if (on && custom_color_[0]) {
+      const Color c = color_by_id(custom_color_);
+      if (c != Color::AUTO) color = c;
+    }
     const bool colored = color != Color::GREY && word;
 
     // The circle lightly in the state's colour and the icon fully; grey, a plain circle.
@@ -303,7 +315,9 @@ class StatusTile : public tessera::Tile {
 
     // The words: the tile's own, else the kind's; a value with its unit when the state is no state word.
     std::string text;
-    if (!word) {
+    if (custom_text_[0]) {
+      text = custom_text_;
+    } else if (!word) {
       text = s;
       if (const char *d = plugin_->text("decimal"); d && *d && *d != '.' && !text.empty() && isdigit(static_cast<unsigned char>(text.back())))
         for (char &ch : text)
@@ -329,6 +343,7 @@ class StatusTile : public tessera::Tile {
   Font state_font_ = Font::TITLE;
   char entity_[96]{}, tile_name_[48]{}, kind_id_[16]{}, on_text_[48]{}, off_text_[48]{};
   char state_text_[64]{}, name_text_[64]{}, device_class_[32]{}, unit_[16]{};
+  char custom_text_[64]{}, custom_color_[16]{};
   lv_obj_t *tint_{}, *circle_{}, *icon_{}, *name_{}, *state_{};
 };
 
