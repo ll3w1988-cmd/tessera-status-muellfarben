@@ -236,15 +236,33 @@ class StatusTile : public tessera::Tile {
     paint_now();
   }
 
-  void on_state(JsonObjectConst data) override {
-    snprintf(state_text_, sizeof state_text_, "%s", data["state"] | "");
+void on_state(JsonObjectConst data) override {
+    const char *raw_state = data["state"] | "";
     have_state_ = !data["state"].isNull();
     snprintf(name_text_, sizeof name_text_, "%s", data["name"] | "");
     JsonObjectConst a = data["attributes"];
     snprintf(device_class_, sizeof device_class_, "%s", a["device_class"] | "");
     snprintf(unit_, sizeof unit_, "%s", a["unit_of_measurement"] | "");
-    snprintf(custom_text_, sizeof custom_text_, "%s", a["volltext"] | "");
-    snprintf(custom_color_, sizeof custom_color_, "%s", a["farbe"] | "");
+
+    // Prüfen, ob unser Kombi-Format "on|yellow|Text" im State steckt:
+    const char *p1 = strchr(raw_state, '|');
+    const char *p2 = p1 ? strchr(p1 + 1, '|') : nullptr;
+    if (p1 && p2) {
+      size_t len1 = std::min(static_cast<size_t>(p1 - raw_state), sizeof(state_text_) - 1);
+      memcpy(state_text_, raw_state, len1);
+      state_text_[len1] = '\0';
+
+      size_t len2 = std::min(static_cast<size_t>(p2 - (p1 + 1)), sizeof(custom_color_) - 1);
+      memcpy(custom_color_, p1 + 1, len2);
+      custom_color_[len2] = '\0';
+
+      snprintf(custom_text_, sizeof custom_text_, "%s", p2 + 1);
+    } else {
+      snprintf(state_text_, sizeof state_text_, "%s", raw_state);
+      snprintf(custom_text_, sizeof custom_text_, "%s", a["volltext"] | "");
+      snprintf(custom_color_, sizeof custom_color_, "%s", a["farbe"] | "");
+    }
+
     wrong_ = strcmp(data["wait"] | "", "wrong_entity") == 0;
     paint_now();
   }
